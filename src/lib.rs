@@ -27,7 +27,6 @@ pub trait WritePrimitive {
     fn u16(&mut self, x: u16) -> Result<()>;
     fn i32(&mut self, x: i32) -> Result<()>;
 }
-
 pub trait ReadPrimitive {
     fn u8(&mut self) -> Result<u8>;
     fn u16(&mut self) -> Result<u16>;
@@ -91,18 +90,15 @@ impl<W: std::io::Write> Writer<W> {
 impl<W: std::io::Write> WritePrimitive for Writer<W> {
     fn u8(&mut self, x: u8) -> Result<()> {
         self.tag(Tag::U8)?;
-        self.0.u8(x)?;
-        Ok(())
+        self.0.u8(x)
     }
     fn u16(&mut self, x: u16) -> Result<()> {
         self.tag(Tag::U16)?;
-        self.0.u16(x)?;
-        Ok(())
+        self.0.u16(x)
     }
     fn i32(&mut self, x: i32) -> Result<()> {
         self.tag(Tag::I32)?;
-        self.0.i32(x)?;
-        Ok(())
+        self.0.i32(x)
     }
 }
 impl<W: std::io::Write> Write for Writer<W> {
@@ -161,12 +157,12 @@ impl<R: std::io::Read> ReadPrimitive for Reader<R> {
 }
 
 impl<R: std::io::Read> Read for Reader<R> {
-    fn obj<S: Deserialize>(&mut self) -> Result<S> {
+    fn obj<T: Deserialize>(&mut self) -> Result<T> {
         if self.tag()? != Tag::OBJ {
             return Err(Error::TagMismatch);
         }
         let version = self.0.u16()?;
-        let obj = S::deserialize(self, version)?;
+        let obj = T::deserialize(self, version)?;
         self.skip_to_end()?;
         Ok(obj)
     }
@@ -179,6 +175,46 @@ pub trait Serialize {
 
 pub trait Deserialize: Sized {
     fn deserialize(read: &mut impl Read, version: u16) -> Result<Self>;
+}
+
+use std::any::Any;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+struct Shared(Box<dyn Any>);
+impl Shared {
+    fn new<T: 'static>(x: T) -> Self {
+        Self(Box::new(Rc::new(x)))
+    }
+    fn as_rc<T: 'static>(&self) -> Option<Rc<T>> {
+        self.0.downcast_ref::<Rc<T>>().map(|rc| rc.clone())
+    }
+}
+
+pub struct ReadingContext {
+    shared_objects: HashMap<u32, Shared>,
+}
+
+impl ReadingContext {
+    pub fn rc<T: 'static>(&self, key: u32) -> Option<Rc<T>> {
+        self.shared_objects
+            .get(&key)
+            .and_then(|shared| shared.as_rc::<T>())
+    }
+}
+
+type DeserializeFn = Box<dyn Fn(&mut dyn std::io::Read, u16) -> Result<Shared>>;
+
+fn deserializer<T: Deserialize + 'static>() -> DeserializeFn {
+    Box::new(|read, version| {
+        let mut read = Reader(read);
+        let obj = T::deserialize(&mut read, version)?;
+        Ok(Shared::new(obj))
+    })
+}
+
+struct DeserializerRegistry {
+    registry: HashMap<&'static str, DeserializeFn>,
 }
 
 #[cfg(test)]
