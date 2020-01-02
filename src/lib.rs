@@ -12,6 +12,8 @@ enum Tag {
 pub enum Error {
     IoError(std::io::Error),
     TagMismatch,
+    DeserializerNotFound,
+    ObjNotFound,
 }
 
 impl std::convert::From<std::io::Error> for Error {
@@ -26,11 +28,13 @@ pub trait WritePrimitive {
     fn u8(&mut self, x: u8) -> Result<()>;
     fn u16(&mut self, x: u16) -> Result<()>;
     fn i32(&mut self, x: i32) -> Result<()>;
+    fn str(&mut self, x: &str) -> Result<()>;
 }
 pub trait ReadPrimitive {
     fn u8(&mut self) -> Result<u8>;
     fn u16(&mut self) -> Result<u16>;
     fn i32(&mut self) -> Result<i32>;
+    fn str(&mut self) -> Result<String>;
 }
 
 pub trait Write: WritePrimitive {
@@ -38,7 +42,8 @@ pub trait Write: WritePrimitive {
 }
 
 pub trait Read: ReadPrimitive {
-    fn obj<S: Deserialize>(&mut self) -> Result<S>;
+    fn obj<T: Deserialize>(&mut self) -> Result<T>;
+    fn rc<T: 'static>(&mut self) -> Result<Rc<T>>;
 }
 
 impl<W: std::io::Write> WritePrimitive for W {
@@ -60,6 +65,9 @@ impl<W: std::io::Write> WritePrimitive for W {
         }
         Ok(())
     }
+    fn str(&mut self, x: &str) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 impl<R: std::io::Read> ReadPrimitive for R {
@@ -77,6 +85,9 @@ impl<R: std::io::Read> ReadPrimitive for R {
         let mut buf = [0u8; 4];
         self.read_exact(&mut buf)?;
         Ok(unsafe { std::mem::transmute(buf) })
+    }
+    fn str(&mut self) -> Result<String> {
+        unimplemented!()
     }
 }
 
@@ -100,6 +111,9 @@ impl<W: std::io::Write> WritePrimitive for Writer<W> {
         self.tag(Tag::I32)?;
         self.0.i32(x)
     }
+    fn str(&mut self, x: &str) -> Result<()> {
+        unimplemented!()
+    }
 }
 impl<W: std::io::Write> Write for Writer<W> {
     fn obj<S: Serialize>(&mut self, x: &S) -> Result<()> {
@@ -111,9 +125,9 @@ impl<W: std::io::Write> Write for Writer<W> {
     }
 }
 
-struct Reader<R: std::io::Read>(R);
+struct Reader<'a, R: std::io::Read>(R, &'a mut ReadingContext);
 
-impl<R: std::io::Read> Reader<R> {
+impl<'a, R: std::io::Read> Reader<'a, R> {
     fn tag(&mut self) -> Result<Tag> {
         Ok(unsafe { std::mem::transmute(self.0.u8()?) })
     }
@@ -140,8 +154,18 @@ impl<R: std::io::Read> Reader<R> {
             }
         }
     }
+    fn read(&mut self, deserializers: &HashMap<String, DeserializeFn>) -> Result<()> {
+        let obj_key = self.i32()?;
+        let type_key = self.str()?;
+        let deserialize = deserializers
+            .get(&type_key)
+            .ok_or(Error::DeserializerNotFound)?;
+        let obj = deserialize(&mut self.0, &mut self.1)?;
+        self.1.shared_objects.insert(obj_key as u32, obj);
+        Ok(())
+    }
 }
-impl<R: std::io::Read> ReadPrimitive for Reader<R> {
+impl<'a, R: std::io::Read> ReadPrimitive for Reader<'a, R> {
     fn u8(&mut self) -> Result<u8> {
         self.ensure(Tag::U8)?;
         self.0.u8()
@@ -154,9 +178,12 @@ impl<R: std::io::Read> ReadPrimitive for Reader<R> {
         self.ensure(Tag::I32)?;
         self.0.i32()
     }
+    fn str(&mut self) -> Result<String> {
+        unimplemented!()
+    }
 }
 
-impl<R: std::io::Read> Read for Reader<R> {
+impl<'a, R: std::io::Read> Read for Reader<'a, R> {
     fn obj<T: Deserialize>(&mut self) -> Result<T> {
         if self.tag()? != Tag::OBJ {
             return Err(Error::TagMismatch);
@@ -165,6 +192,10 @@ impl<R: std::io::Read> Read for Reader<R> {
         let obj = T::deserialize(self, version)?;
         self.skip_to_end()?;
         Ok(obj)
+    }
+    fn rc<T: 'static>(&mut self) -> Result<Rc<T>> {
+        let obj_key = self.i32()?;
+        self.1.rc::<T>(obj_key as u32).ok_or(Error::ObjNotFound)
     }
 }
 
@@ -203,12 +234,28 @@ impl ReadingContext {
     }
 }
 
-type DeserializeFn = Box<dyn Fn(&mut dyn std::io::Read, u16) -> Result<Shared>>;
+pub trait TypeKey {
+    const TYPE_KEY: &'static str;
+}
+
+trait SerializationNode {
+    fn get_dependencies(&self) -> &[&dyn SerializationNode];
+    fn serialize(&self, write: &mut dyn std::io::Write) -> Result<()>
+    where
+        Self: Serialize + TypeKey + Sized,
+    {
+        let mut write = Writer(write);
+        write.str(Self::TYPE_KEY)?;
+        write.obj(self)
+    }
+}
+
+type DeserializeFn = Box<dyn Fn(&mut dyn std::io::Read, &mut ReadingContext) -> Result<Shared>>;
 
 fn deserializer<T: Deserialize + 'static>() -> DeserializeFn {
-    Box::new(|read, version| {
-        let mut read = Reader(read);
-        let obj = T::deserialize(&mut read, version)?;
+    Box::new(|read, con| {
+        let mut read = Reader(read, con);
+        let obj = read.obj::<T>()?;
         Ok(Shared::new(obj))
     })
 }
