@@ -3,6 +3,7 @@ mod read;
 mod write;
 use binrw::*;
 use read::*;
+use std::rc::Rc;
 use write::*;
 
 #[repr(u8)]
@@ -30,6 +31,16 @@ impl std::convert::From<std::io::Error> for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub trait Read: ReadPrimitive {
+    fn obj<T: Deserialize>(&mut self) -> Result<T>;
+    fn rc<T: 'static>(&mut self) -> Result<Rc<T>>;
+}
+
+pub trait Write: WritePrimitive {
+    fn obj<S: Serialize>(&mut self, x: &S) -> Result<()>;
+    fn rc<T>(&mut self, x: &Rc<T>) -> Result<()>;
+}
 
 pub trait Serialize {
     const VERSION: u16 = 0;

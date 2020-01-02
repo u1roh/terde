@@ -3,11 +3,6 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub trait Read: ReadPrimitive {
-    fn obj<T: Deserialize>(&mut self) -> Result<T>;
-    fn rc<T: 'static>(&mut self) -> Result<Rc<T>>;
-}
-
 struct Reader<'a, R: std::io::Read>(R, &'a mut ReadingContext);
 
 impl<'a, R: std::io::Read> Reader<'a, R> {

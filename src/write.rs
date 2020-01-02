@@ -1,8 +1,5 @@
 use super::*;
-
-pub trait Write: WritePrimitive {
-    fn obj<S: Serialize>(&mut self, x: &S) -> Result<()>;
-}
+use std::collections::HashMap;
 
 struct Writer<W: std::io::Write>(W);
 
@@ -36,6 +33,9 @@ impl<W: std::io::Write> Write for Writer<W> {
         self.tag(Tag::END)?;
         Ok(())
     }
+    fn rc<T>(&mut self, x: &Rc<T>) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 trait SerializationNode {
@@ -47,5 +47,18 @@ trait SerializationNode {
         let mut write = Writer(write);
         write.str(Self::TYPE_KEY)?;
         write.obj(self)
+    }
+}
+
+struct WritingContext {
+    shared_objects: HashMap<*const (), u32>,
+}
+
+impl WritingContext {
+    fn rc<T>(&self, x: &Rc<T>) -> Option<u32> {
+        use std::ops::Deref;
+        self.shared_objects
+            .get(&(x.deref() as *const _ as *const ()))
+            .map(|key| *key)
     }
 }
