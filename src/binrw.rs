@@ -33,7 +33,7 @@ impl<W: std::io::Write> WritePrimitive for W {
         }
         Ok(())
     }
-    fn str(&mut self, x: &str) -> Result<()> {
+    fn str(&mut self, _: &str) -> Result<()> {
         unimplemented!()
     }
 }

@@ -25,7 +25,7 @@ impl<'a, W: std::io::Write> WritePrimitive for Writer<'a, W> {
         self.tag(Tag::I32)?;
         self.write.i32(x)
     }
-    fn str(&mut self, x: &str) -> Result<()> {
+    fn str(&mut self, _: &str) -> Result<()> {
         unimplemented!()
     }
 }
@@ -44,21 +44,19 @@ impl<'a, W: std::io::Write> Write for Writer<'a, W> {
     }
 }
 
-pub struct WritingContext {
-    shared_objects: HashMap<*const (), u32>,
-}
+pub struct WritingContext(HashMap<*const (), u32>);
 
 impl WritingContext {
     fn rc<T>(&self, x: &Rc<T>) -> Option<u32> {
         use std::ops::Deref;
-        self.shared_objects
+        self.0
             .get(&(x.deref() as *const _ as *const ()))
             .map(|key| *key)
     }
-    pub(super) fn emit(&mut self, x: *const ()) -> Option<u32> {
+    fn emit(&mut self, x: *const ()) -> Option<u32> {
         use std::collections::hash_map::Entry;
-        let id = self.shared_objects.len() as u32;
-        match self.shared_objects.entry(x) {
+        let id = self.0.len() as u32;
+        match self.0.entry(x) {
             Entry::Occupied(_) => None,
             Entry::Vacant(v) => {
                 v.insert(id);
@@ -68,11 +66,24 @@ impl WritingContext {
     }
 }
 
-pub(super) fn create<'a, W: std::io::Write + 'a>(
-    write: W,
-    con: &'a WritingContext,
-) -> impl Write + 'a {
-    Writer { write, con }
+impl<T> DynSerialize for T
+where
+    T: Serialize + TypeKey,
+{
+    fn serialize(
+        &self,
+        id: u32,
+        write: &mut dyn std::io::Write,
+        con: &write::WritingContext,
+    ) -> Result<()>
+    where
+        Self: Serialize + TypeKey + Sized,
+    {
+        let mut write = Writer { write, con };
+        write.i32(id as i32)?;
+        write.str(Self::TYPE_KEY)?;
+        write.obj(self)
+    }
 }
 
 fn write_object(
@@ -84,7 +95,12 @@ fn write_object(
         for x in obj.get_dependencies() {
             write_object(write, con, *x)?;
         }
-        //obj.serialize(id, write, con)?;
+        obj.serialize(id, write, con)?;
     }
     Ok(())
+}
+
+pub fn write_object_dag(write: &mut dyn std::io::Write, obj: &dyn SerializationNode) -> Result<()> {
+    let mut con = WritingContext(HashMap::new());
+    write_object(write, &mut con, obj)
 }

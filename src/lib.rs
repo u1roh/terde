@@ -53,25 +53,20 @@ pub trait TypeKey {
     const TYPE_KEY: &'static str;
 }
 
-pub trait DynSerialize {}
-
-pub trait SerializationNode {
-    fn get_dependencies(&self) -> &[&dyn SerializationNode];
+pub trait DynSerialize {
     fn serialize(
         &self,
         id: u32,
         write: &mut dyn std::io::Write,
         con: &write::WritingContext,
-    ) -> Result<()>
-    where
-        Self: Serialize + TypeKey + Sized,
-    {
-        let mut write = write::create(write, con);
-        write.i32(id as i32)?;
-        write.str(Self::TYPE_KEY)?;
-        write.obj(self)
-    }
+    ) -> Result<()>;
 }
+
+pub trait SerializationNode: DynSerialize {
+    fn get_dependencies(&self) -> &[&dyn SerializationNode];
+}
+
+pub use write::write_object_dag;
 
 #[cfg(test)]
 mod tests {
