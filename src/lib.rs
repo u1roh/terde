@@ -2,9 +2,7 @@ mod binrw;
 mod read;
 mod write;
 use binrw::*;
-use read::*;
 use std::rc::Rc;
-use write::*;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -53,6 +51,26 @@ pub trait Deserialize: Sized {
 
 pub trait TypeKey {
     const TYPE_KEY: &'static str;
+}
+
+pub trait DynSerialize {}
+
+pub trait SerializationNode {
+    fn get_dependencies(&self) -> &[&dyn SerializationNode];
+    fn serialize(
+        &self,
+        id: u32,
+        write: &mut dyn std::io::Write,
+        con: &write::WritingContext,
+    ) -> Result<()>
+    where
+        Self: Serialize + TypeKey + Sized,
+    {
+        let mut write = write::create(write, con);
+        write.i32(id as i32)?;
+        write.str(Self::TYPE_KEY)?;
+        write.obj(self)
+    }
 }
 
 #[cfg(test)]

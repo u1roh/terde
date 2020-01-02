@@ -6,6 +6,7 @@ pub trait WritePrimitive {
     fn i32(&mut self, x: i32) -> Result<()>;
     fn str(&mut self, x: &str) -> Result<()>;
 }
+
 pub trait ReadPrimitive {
     fn u8(&mut self) -> Result<u8>;
     fn u16(&mut self) -> Result<u16>;
