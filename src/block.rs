@@ -127,7 +127,7 @@ impl<T: ReadPrimitive> ReadBlock for Reader<T> {
         })
     }
     fn begin(&mut self) -> Result<()> {
-        unimplemented!()
+        self.tag(Tag::BEGIN)
     }
     fn end(&mut self) -> Result<()> {
         loop {
