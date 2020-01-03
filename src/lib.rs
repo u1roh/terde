@@ -44,11 +44,11 @@ pub trait Write: WritePrimitive {
 
 pub trait Serialize {
     const VERSION: u16 = 0;
-    fn serialize(&self, write: &mut impl Write) -> Result<()>;
+    fn serialize(&self, write: &mut (impl Write + ?Sized)) -> Result<()>;
 }
 
 pub trait Deserialize: Sized {
-    fn deserialize(read: &mut impl Read, version: u16) -> Result<Self>;
+    fn deserialize(read: &mut (impl Read + ?Sized), version: u16) -> Result<Self>;
 }
 
 pub trait TypeKey {
