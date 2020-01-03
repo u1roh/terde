@@ -1,7 +1,8 @@
-mod binrw;
+mod block;
+mod primitive;
 mod read;
 mod write;
-use binrw::*;
+use primitive::*;
 use std::rc::Rc;
 
 #[repr(u8)]

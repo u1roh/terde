@@ -21,9 +21,9 @@ impl<'a, W: std::io::Write> WritePrimitive for Writer<'a, W> {
         self.tag(Tag::U16)?;
         self.write.u16(x)
     }
-    fn i32(&mut self, x: i32) -> Result<()> {
+    fn u32(&mut self, x: u32) -> Result<()> {
         self.tag(Tag::I32)?;
-        self.write.i32(x)
+        self.write.u32(x)
     }
     fn str(&mut self, _: &str) -> Result<()> {
         unimplemented!()
@@ -40,7 +40,7 @@ impl<'a, W: std::io::Write> Write for Writer<'a, W> {
     }
     fn rc<T>(&mut self, x: &Rc<T>) -> Result<()> {
         let key = self.con.rc(x).ok_or(Error::ObjNotFound)?;
-        self.i32(key as i32)
+        self.u32(key as u32)
     }
 }
 
@@ -80,7 +80,7 @@ where
         Self: Serialize + TypeKey + Sized,
     {
         let mut write = Writer { write, con };
-        write.i32(id as i32)?;
+        write.u32(id as u32)?;
         write.str(Self::TYPE_KEY)?;
         write.obj(self)
     }

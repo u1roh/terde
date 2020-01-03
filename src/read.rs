@@ -33,7 +33,7 @@ impl<'a, R: std::io::Read> Reader<'a, R> {
         }
     }
     fn read(&mut self, deserializers: &HashMap<String, DeserializeFn>) -> Result<()> {
-        let obj_key = self.i32()?;
+        let obj_key = self.u32()?;
         let type_key = self.str()?;
         let deserialize = deserializers
             .get(&type_key)
@@ -52,9 +52,9 @@ impl<'a, R: std::io::Read> ReadPrimitive for Reader<'a, R> {
         self.ensure(Tag::U16)?;
         self.0.u16()
     }
-    fn i32(&mut self) -> Result<i32> {
+    fn u32(&mut self) -> Result<u32> {
         self.ensure(Tag::I32)?;
-        self.0.i32()
+        self.0.u32()
     }
     fn str(&mut self) -> Result<String> {
         unimplemented!()
@@ -72,7 +72,7 @@ impl<'a, R: std::io::Read> Read for Reader<'a, R> {
         Ok(obj)
     }
     fn rc<T: 'static>(&mut self) -> Result<Rc<T>> {
-        let obj_key = self.i32()?;
+        let obj_key = self.u32()?;
         self.1.rc::<T>(obj_key as u32).ok_or(Error::ObjNotFound)
     }
 }
