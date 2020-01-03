@@ -12,7 +12,7 @@ enum Tag {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Primitive {
+pub enum Value {
     Begin,
     End,
     U8(u8),
@@ -20,23 +20,31 @@ pub enum Primitive {
     U32(u32),
 }
 
-pub trait WriteBlock: WritePrimitive {
-    fn primitive(&mut self, x: Primitive) -> Result<()>;
+pub trait TagWrite: WritePrimitive {
     fn begin(&mut self) -> Result<()>;
     fn end(&mut self) -> Result<()>;
+    fn primitive(&mut self, x: Value) -> Result<()> {
+        match x {
+            Value::Begin => self.begin(),
+            Value::End => self.end(),
+            Value::U8(x) => self.u8(x),
+            Value::U16(x) => self.u16(x),
+            Value::U32(x) => self.u32(x),
+        }
+    }
 }
 
-pub trait ReadBlock: ReadPrimitive {
-    fn primitive(&mut self) -> Result<Primitive>;
+pub trait TagRead: ReadPrimitive {
     fn begin(&mut self) -> Result<()>;
     fn end(&mut self) -> Result<()>;
+    fn primitive(&mut self) -> Result<Value>;
 }
 
-pub fn create_writer<T: WritePrimitive>(write: T) -> impl WriteBlock {
+pub fn create_writer<T: WritePrimitive>(write: T) -> impl TagWrite {
     Writer(write)
 }
 
-pub fn create_reader<T: ReadPrimitive>(read: T) -> impl ReadBlock {
+pub fn create_reader<T: ReadPrimitive>(read: T) -> impl TagRead {
     Reader(read)
 }
 
@@ -67,16 +75,7 @@ impl<T: WritePrimitive> WritePrimitive for Writer<T> {
     }
 }
 
-impl<T: WritePrimitive> WriteBlock for Writer<T> {
-    fn primitive(&mut self, x: Primitive) -> Result<()> {
-        match x {
-            Primitive::Begin => self.begin(),
-            Primitive::End => self.end(),
-            Primitive::U8(x) => self.u8(x),
-            Primitive::U16(x) => self.u16(x),
-            Primitive::U32(x) => self.u32(x),
-        }
-    }
+impl<T: WritePrimitive> TagWrite for Writer<T> {
     fn begin(&mut self) -> Result<()> {
         self.tag(Tag::BEGIN)
     }
@@ -116,14 +115,14 @@ impl<T: ReadPrimitive> ReadPrimitive for Reader<T> {
     }
 }
 
-impl<T: ReadPrimitive> ReadBlock for Reader<T> {
-    fn primitive(&mut self) -> Result<Primitive> {
+impl<T: ReadPrimitive> TagRead for Reader<T> {
+    fn primitive(&mut self) -> Result<Value> {
         Ok(match self.read_tag()? {
-            Tag::BEGIN => Primitive::Begin,
-            Tag::END => Primitive::End,
-            Tag::U8 => Primitive::U8(self.0.u8()?),
-            Tag::U16 => Primitive::U16(self.0.u16()?),
-            Tag::U32 => Primitive::U32(self.0.u32()?),
+            Tag::BEGIN => Value::Begin,
+            Tag::END => Value::End,
+            Tag::U8 => Value::U8(self.0.u8()?),
+            Tag::U16 => Value::U16(self.0.u16()?),
+            Tag::U32 => Value::U32(self.0.u32()?),
         })
     }
     fn begin(&mut self) -> Result<()> {
@@ -132,8 +131,8 @@ impl<T: ReadPrimitive> ReadBlock for Reader<T> {
     fn end(&mut self) -> Result<()> {
         loop {
             match self.primitive()? {
-                Primitive::End => return Ok(()),
-                Primitive::Begin => self.end()?,
+                Value::End => return Ok(()),
+                Value::Begin => self.end()?,
                 _ => {}
             }
         }

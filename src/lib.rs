@@ -1,7 +1,7 @@
-mod block;
 mod primitive;
 mod read;
 mod refobj;
+mod tag;
 mod write;
 use primitive::*;
 use std::rc::Rc;
@@ -56,19 +56,17 @@ pub trait TypeKey {
 }
 
 pub trait DynSerialize {
-    fn serialize(
-        &self,
-        id: u32,
-        write: &mut dyn std::io::Write,
-        con: &write::WritingContext,
-    ) -> Result<()>;
+    fn type_key(&self) -> &'static str;
+    fn serialize(&self, write: &mut dyn refobj::WriteRef) -> Result<()>;
 }
 
 pub trait SerializationNode: DynSerialize {
     fn get_dependencies(&self) -> &[&dyn SerializationNode];
 }
 
-pub use write::write_object_dag;
+pub use tag::create_reader;
+pub use tag::create_writer;
+pub use write::write_object;
 
 #[cfg(test)]
 mod tests {
