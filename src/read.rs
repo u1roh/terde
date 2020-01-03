@@ -1,110 +1,88 @@
 use super::*;
-use std::any::Any;
+use crate::refobj::*;
+use crate::tag::*;
 use std::collections::HashMap;
-use std::rc::Rc;
 
-struct Reader<'a, R: std::io::Read>(R, &'a mut ReadingContext);
-
-impl<'a, R: std::io::Read> Reader<'a, R> {
-    fn tag(&mut self) -> Result<Tag> {
-        Ok(unsafe { std::mem::transmute(self.0.u8()?) })
-    }
-    fn ensure(&mut self, tag: Tag) -> Result<()> {
-        if self.tag()? == tag {
-            Ok(())
-        } else {
-            Err(Error::TagMismatch)
-        }
-    }
-    fn skip_to_end(&mut self) -> Result<()> {
-        let mut buf = [0u8; 8];
-        loop {
-            let tag = self.tag()?;
-            match tag {
-                Tag::END => return Ok(()),
-                Tag::OBJ => {
-                    let _version = self.0.u16()?;
-                    self.skip_to_end()?;
-                }
-                Tag::U8 => self.0.read_exact(&mut buf[..1])?,
-                Tag::U16 => self.0.read_exact(&mut buf[..2])?,
-                Tag::I32 => self.0.read_exact(&mut buf[..4])?,
-            }
-        }
-    }
-    fn read(&mut self, deserializers: &HashMap<String, DeserializeFn>) -> Result<()> {
-        let obj_key = self.u32()?;
-        let type_key = self.str()?;
-        let deserialize = deserializers
-            .get(&type_key)
-            .ok_or(Error::DeserializerNotFound)?;
-        let obj = deserialize(&mut self.0, &mut self.1)?;
-        self.1.shared_objects.insert(obj_key as u32, obj);
-        Ok(())
-    }
-}
-impl<'a, R: std::io::Read> ReadPrimitive for Reader<'a, R> {
-    fn u8(&mut self) -> Result<u8> {
-        self.ensure(Tag::U8)?;
-        self.0.u8()
-    }
-    fn u16(&mut self) -> Result<u16> {
-        self.ensure(Tag::U16)?;
-        self.0.u16()
-    }
-    fn u32(&mut self) -> Result<u32> {
-        self.ensure(Tag::I32)?;
-        self.0.u32()
-    }
-    fn str(&mut self) -> Result<String> {
-        unimplemented!()
-    }
-}
-
-impl<'a, R: std::io::Read> Read for Reader<'a, R> {
-    fn obj<T: Deserialize>(&mut self) -> Result<T> {
-        if self.tag()? != Tag::OBJ {
-            return Err(Error::TagMismatch);
-        }
-        let version = self.0.u16()?;
-        let obj = T::deserialize(self, version)?;
-        self.skip_to_end()?;
-        Ok(obj)
-    }
-    fn rc<T: 'static>(&mut self) -> Result<Rc<T>> {
-        let obj_key = self.u32()?;
-        self.1.rc::<T>(obj_key as u32).ok_or(Error::ObjNotFound)
-    }
-}
-
-type DeserializeFn = Box<dyn Fn(&mut dyn std::io::Read, &mut ReadingContext) -> Result<Shared>>;
+type DeserializeFn = Box<dyn Fn(&mut dyn ReadRef) -> Result<RefObj>>;
 
 fn deserializer<T: Deserialize + 'static>() -> DeserializeFn {
-    Box::new(|read, con| {
-        let mut read = Reader(read, con);
+    Box::new(|read| {
         let obj = read.obj::<T>()?;
-        Ok(Shared::new(obj))
+        Ok(RefObj::new(obj))
     })
 }
 
-struct Shared(Box<dyn Any>);
-impl Shared {
-    fn new<T: 'static>(x: T) -> Self {
-        Self(Box::new(Rc::new(x)))
+#[derive(Default)]
+pub struct DeserializerRegistry(HashMap<String, DeserializeFn>);
+impl DeserializerRegistry {
+    pub fn new() -> Self {
+        Self(HashMap::new())
     }
-    fn as_rc<T: 'static>(&self) -> Option<Rc<T>> {
-        self.0.downcast_ref::<Rc<T>>().map(|rc| rc.clone())
+    pub fn register<T: Deserialize + TypeKey + 'static>(&mut self) {
+        self.0.insert(T::TYPE_KEY.to_string(), deserializer::<T>());
+    }
+    fn read_next_object(&self, read: &mut dyn ReadRef) -> Result<(u32, RefObj)> {
+        read.begin()?;
+        let id = read.u32()?;
+        let type_key = read.str()?;
+        let des = self.0.get(&type_key).ok_or(Error::DeserializerNotFound)?;
+        let obj = des(read)?;
+        Ok((id, obj))
+    }
+    pub fn read_object(&self, read: impl TagRead) -> Result<RefObj> {
+        let mut reader = Reader {
+            read,
+            con: HashMap::new(),
+        };
+        let mut last = None;
+        while let Ok((id, obj)) = self.read_next_object(&mut reader) {
+            reader.con.insert(id, obj);
+            last = Some(id);
+        }
+        last.and_then(|id| reader.con.remove(&id))
+            .ok_or(Error::ObjNotFound)
     }
 }
 
-pub struct ReadingContext {
-    shared_objects: HashMap<u32, Shared>,
+struct Reader<T> {
+    read: T,
+    con: HashMap<u32, RefObj>,
 }
 
-impl ReadingContext {
-    pub fn rc<T: 'static>(&self, key: u32) -> Option<Rc<T>> {
-        self.shared_objects
-            .get(&key)
-            .and_then(|shared| shared.as_rc::<T>())
+mod impl_traits {
+    use super::*;
+
+    impl<T: ReadPrimitive> ReadPrimitive for Reader<T> {
+        fn u8(&mut self) -> Result<u8> {
+            self.read.u8()
+        }
+        fn u16(&mut self) -> Result<u16> {
+            self.read.u16()
+        }
+        fn u32(&mut self) -> Result<u32> {
+            self.read.u32()
+        }
+        fn str(&mut self) -> Result<String> {
+            self.read.str()
+        }
+    }
+
+    impl<T: TagRead> TagRead for Reader<T> {
+        fn begin(&mut self) -> Result<()> {
+            self.read.begin()
+        }
+        fn end(&mut self) -> Result<()> {
+            self.read.end()
+        }
+        fn primitive(&mut self) -> Result<Value> {
+            self.read.primitive()
+        }
+    }
+
+    impl<T: TagRead> ReadRef for Reader<T> {
+        fn ptr(&mut self) -> Result<&RefObj> {
+            let id = self.read.u32()?;
+            self.con.get(&id).ok_or(Error::ObjNotFound)
+        }
     }
 }

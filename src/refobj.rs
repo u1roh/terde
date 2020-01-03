@@ -9,7 +9,7 @@ impl RefObj {
         Self(Box::new(Rc::new(x)))
     }
     pub fn as_rc<T: 'static>(&self) -> Option<Rc<T>> {
-        self.0.downcast_ref::<Rc<T>>().map(|rc| rc.clone())
+        self.0.downcast_ref::<Rc<T>>().cloned()
     }
 }
 
@@ -18,7 +18,7 @@ pub trait WriteRef: TagWrite {
 }
 
 pub trait ReadRef: TagRead {
-    fn ptr(&mut self) -> Result<RefObj>;
+    fn ptr(&mut self) -> Result<&RefObj>;
 }
 
 impl<W: WriteRef + ?Sized> Write for W {

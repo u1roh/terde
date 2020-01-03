@@ -6,16 +6,6 @@ mod write;
 use primitive::*;
 use std::rc::Rc;
 
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum Tag {
-    END,
-    OBJ,
-    U8,
-    U16,
-    I32,
-}
-
 #[derive(Debug)]
 pub enum Error {
     IoError(std::io::Error),
@@ -64,6 +54,7 @@ pub trait SerializationNode: DynSerialize {
     fn get_dependencies(&self) -> &[&dyn SerializationNode];
 }
 
+pub use read::DeserializerRegistry;
 pub use tag::create_reader;
 pub use tag::create_writer;
 pub use write::write_object;
