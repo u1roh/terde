@@ -1,6 +1,6 @@
+mod dynobj;
 mod primitive;
 mod read;
-mod refobj;
 mod tag;
 mod write;
 use std::rc::Rc;
@@ -60,7 +60,7 @@ pub trait TypeKey {
 
 pub trait DynSerialize {
     fn type_key(&self) -> &'static str;
-    fn serialize(&self, write: &mut dyn refobj::WriteRef) -> Result<()>;
+    fn serialize(&self, write: &mut dyn dynobj::WriteRef) -> Result<()>;
 }
 
 pub trait SerializationNode: DynSerialize {
