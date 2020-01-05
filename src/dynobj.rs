@@ -3,8 +3,8 @@ use crate::tag::*;
 use std::any::Any;
 use std::rc::Rc;
 
-pub struct RefObj(Box<dyn Any>);
-impl RefObj {
+pub struct DynObj(Box<dyn Any>);
+impl DynObj {
     pub fn new<T: 'static>(x: T) -> Self {
         Self(Box::new(Rc::new(x)))
     }
@@ -13,35 +13,28 @@ impl RefObj {
     }
 }
 
-pub trait WriteRef: TagWrite {
+pub trait DynSerialize {
+    fn type_key(&self) -> &'static str;
+    fn version(&self) -> u16;
+    fn serialize(&self, write: &mut dyn DynWrite) -> Result<()>;
+}
+
+pub trait DynWrite: TagWrite {
     fn ptr(&mut self, ptr: *const ()) -> Result<()>;
 }
 
-pub trait ReadRef: TagRead {
-    fn ptr(&mut self) -> Result<&RefObj>;
+pub trait DynRead: TagRead {
+    fn ptr(&mut self) -> Result<&DynObj>;
 }
 
-impl<W: WriteRef + ?Sized> Write for W {
-    fn obj<S: Serialize>(&mut self, x: &S) -> Result<()> {
-        self.begin()?;
-        self.u16(S::VERSION)?;
-        x.serialize(self)?;
-        self.end()
-    }
+impl<'a> Write for dyn DynWrite + 'a {
     fn rc<T>(&mut self, x: &Rc<T>) -> Result<()> {
         use std::ops::Deref;
         self.ptr(x.deref() as *const _ as *const ())
     }
 }
 
-impl<R: ReadRef + ?Sized> Read for R {
-    fn obj<T: Deserialize>(&mut self) -> Result<T> {
-        self.begin()?;
-        let version = self.u16()?;
-        let obj = T::deserialize(self, version)?;
-        self.end()?;
-        Ok(obj)
-    }
+impl<'a> Read for dyn DynRead + 'a {
     fn rc<T: 'static>(&mut self) -> Result<Rc<T>> {
         let obj = self.ptr()?;
         obj.as_rc::<T>().ok_or(Error::ObjNotFound)
@@ -55,7 +48,10 @@ where
     fn type_key(&self) -> &'static str {
         Self::TYPE_KEY
     }
-    fn serialize(&self, write: &mut dyn WriteRef) -> Result<()> {
-        write.obj(self)
+    fn version(&self) -> u16 {
+        Self::VERSION
+    }
+    fn serialize(&self, write: &mut dyn DynWrite) -> Result<()> {
+        self.serialize(write)
     }
 }

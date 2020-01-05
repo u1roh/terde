@@ -38,7 +38,12 @@ fn write_object_recursive<T: TagWrite>(
         write.begin()?;
         write.u32(id)?;
         write.str(obj.type_key())?;
-        obj.serialize(write)?;
+        {
+            write.begin()?;
+            write.u16(obj.version())?;
+            obj.serialize(write)?;
+            write.end()?;
+        }
         write.end()?;
     }
     Ok(())
@@ -82,7 +87,7 @@ mod impl_traits {
         }
     }
 
-    impl<T: TagWrite> WriteRef for Writer<T> {
+    impl<T: TagWrite> DynWrite for Writer<T> {
         fn ptr(&mut self, ptr: *const ()) -> Result<()> {
             let key = self.con.ptr2key(ptr)?;
             self.write.u32(key)

@@ -3,12 +3,12 @@ use crate::dynobj::*;
 use crate::tag::*;
 use std::collections::HashMap;
 
-type DeserializeFn = Box<dyn Fn(&mut dyn ReadRef) -> Result<RefObj>>;
+type DeserializeFn = Box<dyn Fn(&mut dyn DynRead) -> Result<DynObj>>;
 
 fn deserializer<T: Deserialize + 'static>() -> DeserializeFn {
     Box::new(|read| {
         let obj = read.obj::<T>()?;
-        Ok(RefObj::new(obj))
+        Ok(DynObj::new(obj))
     })
 }
 
@@ -21,7 +21,7 @@ impl DeserializerRegistry {
     pub fn register<T: Deserialize + TypeKey + 'static>(&mut self) {
         self.0.insert(T::TYPE_KEY.to_string(), deserializer::<T>());
     }
-    fn read_next_object(&self, read: &mut dyn ReadRef) -> Result<(u32, RefObj)> {
+    fn read_next_object(&self, read: &mut dyn DynRead) -> Result<(u32, DynObj)> {
         read.begin()?;
         let id = read.u32()?;
         let type_key = read.str()?;
@@ -29,7 +29,7 @@ impl DeserializerRegistry {
         let obj = des(read)?;
         Ok((id, obj))
     }
-    pub fn read_object(&self, read: impl TagRead) -> Result<RefObj> {
+    pub fn read_object(&self, read: impl TagRead) -> Result<DynObj> {
         let mut reader = Reader {
             read,
             con: HashMap::new(),
@@ -46,7 +46,7 @@ impl DeserializerRegistry {
 
 struct Reader<T> {
     read: T,
-    con: HashMap<u32, RefObj>,
+    con: HashMap<u32, DynObj>,
 }
 
 mod impl_traits {
@@ -79,8 +79,8 @@ mod impl_traits {
         }
     }
 
-    impl<T: TagRead> ReadRef for Reader<T> {
-        fn ptr(&mut self) -> Result<&RefObj> {
+    impl<T: TagRead> DynRead for Reader<T> {
+        fn ptr(&mut self) -> Result<&DynObj> {
             let id = self.read.u32()?;
             self.con.get(&id).ok_or(Error::ObjNotFound)
         }
