@@ -4,12 +4,14 @@ pub trait PrimitiveWrite {
     fn write8(&mut self, x: u8) -> Result<()>;
     fn write16(&mut self, x: u16) -> Result<()>;
     fn write32(&mut self, x: u32) -> Result<()>;
+    fn write128(&mut self, x: u128) -> Result<()>;
 }
 
 pub trait PrimitiveRead {
     fn read8(&mut self) -> Result<u8>;
     fn read16(&mut self) -> Result<u16>;
     fn read32(&mut self) -> Result<u32>;
+    fn read128(&mut self) -> Result<u128>;
 }
 
 impl<W: std::io::Write> PrimitiveWrite for W {
@@ -31,6 +33,12 @@ impl<W: std::io::Write> PrimitiveWrite for W {
         }
         Ok(())
     }
+    fn write128(&mut self, x: u128) -> Result<()> {
+        unsafe {
+            self.write_all(&std::mem::transmute::<u128, [u8; 16]>(x))?;
+        }
+        Ok(())
+    }
 }
 
 impl<R: std::io::Read> PrimitiveRead for R {
@@ -46,6 +54,11 @@ impl<R: std::io::Read> PrimitiveRead for R {
     }
     fn read32(&mut self) -> Result<u32> {
         let mut buf = [0u8; 4];
+        self.read_exact(&mut buf)?;
+        Ok(unsafe { std::mem::transmute(buf) })
+    }
+    fn read128(&mut self) -> Result<u128> {
+        let mut buf = [0u8; 16];
         self.read_exact(&mut buf)?;
         Ok(unsafe { std::mem::transmute(buf) })
     }

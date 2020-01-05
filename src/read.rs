@@ -13,20 +13,22 @@ fn deserializer<T: Deserialize + 'static>() -> DeserializeFn {
 }
 
 #[derive(Default)]
-pub struct DeserializerRegistry(HashMap<String, DeserializeFn>);
+pub struct DeserializerRegistry(HashMap<u128, DeserializeFn>);
 impl DeserializerRegistry {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
     pub fn register<T: Deserialize + TypeKey + 'static>(&mut self) {
-        self.0.insert(T::TYPE_KEY.to_string(), deserializer::<T>());
+        self.0.insert(T::TYPE_KEY, deserializer::<T>());
     }
     fn read_next_object(&self, read: &mut dyn DynRead) -> Result<(u32, DynObj)> {
         read.begin()?;
         let id = read.u32()?;
-        let type_key = read.str()?;
+        let type_key = read.u128()?;
         let des = self.0.get(&type_key).ok_or(Error::DeserializerNotFound)?;
         let obj = des(read)?;
+        read.end()?;
+        println!("id = {}, type_key = {}, obj = {:?}", id, type_key, obj);
         Ok((id, obj))
     }
     pub fn read_object(&self, read: impl TagRead) -> Result<DynObj> {
@@ -61,6 +63,9 @@ mod impl_traits {
         }
         fn u32(&mut self) -> Result<u32> {
             self.read.u32()
+        }
+        fn u128(&mut self) -> Result<u128> {
+            self.read.u128()
         }
         fn str(&mut self) -> Result<String> {
             self.read.str()

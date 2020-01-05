@@ -9,6 +9,7 @@ enum Tag {
     U8,
     U16,
     U32,
+    U128,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -18,6 +19,7 @@ pub enum Value {
     U8(u8),
     U16(u16),
     U32(u32),
+    U128(u128),
 }
 
 pub trait TagWrite: WritePrimitive {
@@ -30,6 +32,7 @@ pub trait TagWrite: WritePrimitive {
             Value::U8(x) => self.u8(x),
             Value::U16(x) => self.u16(x),
             Value::U32(x) => self.u32(x),
+            Value::U128(x) => self.u128(x),
         }
     }
 }
@@ -62,6 +65,10 @@ impl<W: PrimitiveWrite> WritePrimitive for W {
     fn u32(&mut self, x: u32) -> Result<()> {
         self.tag(Tag::U32)?;
         self.write32(x)
+    }
+    fn u128(&mut self, x: u128) -> Result<()> {
+        self.tag(Tag::U128)?;
+        self.write128(x)
     }
     fn str(&mut self, _: &str) -> Result<()> {
         unimplemented!()
@@ -107,6 +114,10 @@ impl<R: PrimitiveRead> ReadPrimitive for R {
         self.tag(Tag::U32)?;
         self.read32()
     }
+    fn u128(&mut self) -> Result<u128> {
+        self.tag(Tag::U128)?;
+        self.read128()
+    }
     fn str(&mut self) -> Result<String> {
         unimplemented!()
     }
@@ -120,6 +131,7 @@ impl<R: PrimitiveRead> TagRead for R {
             Tag::U8 => Value::U8(self.read8()?),
             Tag::U16 => Value::U16(self.read16()?),
             Tag::U32 => Value::U32(self.read32()?),
+            Tag::U128 => Value::U128(self.read128()?),
         })
     }
     fn begin(&mut self) -> Result<()> {

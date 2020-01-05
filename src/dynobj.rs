@@ -3,6 +3,7 @@ use crate::tag::*;
 use std::any::Any;
 use std::rc::Rc;
 
+#[derive(Debug)]
 pub struct DynObj(Box<dyn Any>);
 impl DynObj {
     pub fn new<T: 'static>(x: T) -> Self {
@@ -14,7 +15,7 @@ impl DynObj {
 }
 
 pub trait DynSerialize {
-    fn type_key(&self) -> &'static str;
+    fn type_key(&self) -> u128;
     fn version(&self) -> u16;
     fn serialize(&self, write: &mut dyn DynWrite) -> Result<()>;
 }
@@ -45,7 +46,7 @@ impl<T> DynSerialize for T
 where
     T: Serialize + TypeKey,
 {
-    fn type_key(&self) -> &'static str {
+    fn type_key(&self) -> u128 {
         Self::TYPE_KEY
     }
     fn version(&self) -> u16 {

@@ -33,11 +33,11 @@ fn write_object_recursive<T: TagWrite>(
 ) -> Result<()> {
     if let Some(id) = write.con.emit(obj as *const _ as *const ()) {
         for x in obj.get_dependencies() {
-            write_object_recursive(write, *x)?;
+            write_object_recursive(write, x)?;
         }
         write.begin()?;
         write.u32(id)?;
-        write.str(obj.type_key())?;
+        write.u128(obj.type_key())?;
         {
             write.begin()?;
             write.u16(obj.version())?;
@@ -69,6 +69,9 @@ mod impl_traits {
         }
         fn u32(&mut self, x: u32) -> Result<()> {
             self.write.u32(x)
+        }
+        fn u128(&mut self, x: u128) -> Result<()> {
+            self.write.u128(x)
         }
         fn str(&mut self, x: &str) -> Result<()> {
             self.write.str(x)
