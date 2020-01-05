@@ -3,7 +3,6 @@ mod read;
 mod refobj;
 mod tag;
 mod write;
-use primitive::*;
 use std::rc::Rc;
 
 #[derive(Debug)]
@@ -21,6 +20,20 @@ impl std::convert::From<std::io::Error> for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub trait WritePrimitive {
+    fn u8(&mut self, x: u8) -> Result<()>;
+    fn u16(&mut self, x: u16) -> Result<()>;
+    fn u32(&mut self, x: u32) -> Result<()>;
+    fn str(&mut self, x: &str) -> Result<()>;
+}
+
+pub trait ReadPrimitive {
+    fn u8(&mut self) -> Result<u8>;
+    fn u16(&mut self) -> Result<u16>;
+    fn u32(&mut self) -> Result<u32>;
+    fn str(&mut self) -> Result<String>;
+}
 
 pub trait Read: ReadPrimitive {
     fn obj<T: Deserialize>(&mut self) -> Result<T>;
@@ -55,8 +68,8 @@ pub trait SerializationNode: DynSerialize {
 }
 
 pub use read::DeserializerRegistry;
-pub use tag::create_reader;
-pub use tag::create_writer;
+//pub use tag::create_reader;
+//pub use tag::create_writer;
 pub use write::write_object;
 
 #[cfg(test)]
